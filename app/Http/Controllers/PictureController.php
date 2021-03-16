@@ -26,7 +26,26 @@ class PictureController extends Controller
      */
     public function create()
     {
-      return view('pictures.create');
+      $awsClient = new \Aws\S3\S3Client([
+        'version' => 'latest',
+        'region' => env('AWS_DEFAULT_REGION'),
+      ]);
+      $bucket = env('AWS_BUCKET');
+      $key = "pictures/" . \Str::random(40);
+      $formInputs = ['acl' => 'private', 'key' => $key];
+      $options = [
+          ['acl' => 'private'],
+          ['bucket' => $bucket],
+          ['eq', '$key', $key],
+      ];      
+      $postObject = new \Aws\S3\PostObjectV4(
+        $awsClient, $bucket, $formInputs, $options, "+1 hours"
+      );
+      
+      return view('pictures.create', [
+        's3attributes' => $postObject->getFormAttributes(),
+        's3inputs' => $postObject->getFormInputs(),
+      ]);
     }
 
     /**
@@ -39,7 +58,6 @@ class PictureController extends Controller
     {
       $picture = new Picture;
       $picture->fill($request->all());
-      $picture->storage_path = $request->picture->store('pictures');
       $picture->save();
     }
 
@@ -52,7 +70,7 @@ class PictureController extends Controller
     public function show(Request $request, Picture $picture)
     {
       if (\Str::startsWith($request->header('Accept'), 'image')) {
-        return \Storage::get($picture->storage_path);
+        return redirect(\Storage::disk('s3')->temporaryUrl($picture->storage_path, now()->addMinutes(1)));
       }
       
       return view('pictures.show', compact('picture'));
